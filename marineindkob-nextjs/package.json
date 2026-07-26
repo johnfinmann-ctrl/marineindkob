@@ -1,0 +1,36 @@
+{
+  "name": "marineindkob",
+  "version": "3.0.0",
+  "private": true,
+  "description": "MarineIndkøb — indkøbs- og lagerassistent til Ebeltoft Marineforening. Fase 3: teknisk fundament med Supabase.",
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "next lint",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run tests/unit",
+    "test:watch": "vitest",
+    "test:integration": "vitest run tests/integration",
+    "seed": "node supabase/seed/run-seed.mjs"
+  },
+  "dependencies": {
+    "next": "16.2.12",
+    "react": "19.2.8",
+    "react-dom": "19.2.8",
+    "@supabase/ssr": "0.12.3",
+    "@supabase/supabase-js": "2.110.8",
+    "zod": "3.24.1"
+  },
+  "devDependencies": {
+    "typescript": "5.7.2",
+    "@types/node": "22.10.2",
+    "@types/react": "19.0.2",
+    "@types/react-dom": "19.0.2",
+    "tailwindcss": "4.3.3",
+    "@tailwindcss/postcss": "4.3.3",
+    "postcss": "8.4.49",
+    "vitest": "2.1.8",
+    "dotenv": "16.4.7"
+  }
+}
