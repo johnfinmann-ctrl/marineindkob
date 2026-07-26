@@ -1,0 +1,13 @@
+{
+  "name": "MarineIndkøb — Ebeltoft Marineforening",
+  "short_name": "MarineIndkøb",
+  "description": "Digital indkøbs- og lagerassistent til Ebeltoft Marineforening.",
+  "start_url": "/forside",
+  "display": "standalone",
+  "background_color": "#EFE9DD",
+  "theme_color": "#0B2438",
+  "lang": "da",
+  "icons": [
+    { "src": "/icons/icon.svg", "sizes": "192x192 512x512", "type": "image/svg+xml" }
+  ]
+}

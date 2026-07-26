@@ -1,0 +1,62 @@
+@import "tailwindcss";
+
+@theme {
+  --color-navy: #0B2438;
+  --color-navy-dark: #081A29;
+  --color-navy-soft: #12354F;
+  --color-warm-white: #FDFCF9;
+  --color-sand: #EFE9DD;
+  --color-sand-dark: #E2D9C6;
+  --color-gold: #A8883A;
+  --color-gold-light: #C9AD6B;
+  --color-green: #2E7D4F;
+  --color-green-bg: #E4F0E7;
+  --color-yellow: #C9971C;
+  --color-yellow-bg: #FBF1DC;
+  --color-red: #B23A2E;
+  --color-red-bg: #F8E7E4;
+  --color-blue: #3E6B8A;
+  --color-blue-bg: #E7EEF2;
+  --color-ink: #1C2B33;
+
+  --font-serif: Georgia, "Iowan Old Style", "Palatino Linotype", Palatino, serif;
+  --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+}
+
+html, body {
+  background: var(--color-sand);
+  color: var(--color-ink);
+  overflow-x: hidden;
+}
+
+* {
+  -webkit-font-smoothing: antialiased;
+}
+
+.wave-rule {
+  height: 8px;
+  background-image: linear-gradient(to right, transparent 0%, var(--color-gold) 50%, transparent 100%);
+  opacity: 0.55;
+  -webkit-mask-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 8'><path d='M0 4 Q 5 0 10 4 T 20 4 T 30 4 T 40 4 T 50 4 T 60 4 T 70 4 T 80 4 T 90 4 T 100 4 V8 H0 Z' fill='black'/></svg>");
+  mask-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 8'><path d='M0 4 Q 5 0 10 4 T 20 4 T 30 4 T 40 4 T 50 4 T 60 4 T 70 4 T 80 4 T 90 4 T 100 4 V8 H0 Z' fill='black'/></svg>");
+  mask-size: 100% 100%;
+}
+
+.card {
+  background: var(--color-warm-white);
+  border-radius: 14px;
+  box-shadow: 0 2px 10px rgba(11, 36, 56, 0.08), 0 1px 2px rgba(11, 36, 56, 0.06);
+  padding: 16px;
+}
+
+.btn-primary {
+  background: var(--color-navy);
+  color: var(--color-warm-white);
+}
+.btn-primary:active {
+  background: var(--color-navy-dark);
+}
+.btn-gold {
+  background: var(--color-gold);
+  color: #fff;
+}
