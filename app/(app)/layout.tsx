@@ -9,7 +9,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   const membership = await getCurrentMembership(supabase);
 
   if (!membership) {
-    redirect("/login");
+    redirect("/login?error=no_membership");
   }
 
   return (

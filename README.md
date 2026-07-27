@@ -182,15 +182,34 @@ anden bruger til administrator:
 
 ## Test af login
 
+MarineIndkøb bruger **PKCE code-flow** som det ene, kanoniske loginflow:
+magic link-mailen peger på `/auth/callback`, som udveksler koden server-side
+og sætter sessionscookien, før brugeren sendes til `/forside`. Login-siden
+(`/login`) har derudover et sikkerhedsnet, der håndterer en PKCE-kode eller et
+implicit-flow-fragment, hvis de mod forventning skulle lande direkte der
+(fx et ældre magic-link sendt før denne rettelse) — men det er ikke det flow,
+appen selv bruger.
+
 1. Åbn appen (lokalt eller på Vercel) og gå til login-siden.
 2. Indtast en af de to brugeres e-mail (se "Seed-data og brugere" ovenfor).
 3. Tjek postkassen for magic link-mailen (eller **Supabase Studio →
    Authentication → Logs**, hvis I ikke har konfigureret en rigtig
    e-mail-udbyder endnu).
-4. Klik linket — I lander tilbage på `/login` med tokens i URL-fragmentet;
-   login-siden opretter automatisk sessionen og sender jer videre til
-   `/forside` i løbet af et øjeblik.
+4. **Åbn linket i den SAMME browser og på den samme enhed**, som I anmodede
+   det fra — PKCE kræver, at "code verifier"-cookien fra anmodningen stadig
+   findes i browseren. Linket sender jer til `/auth/callback?code=...`, som
+   udveksler koden og redirecter jer til `/forside`.
 5. Bekræft, at navnet i topbaren/sidemenuen matcher den bruger, I loggede ind som.
+
+**Andre situationer, der er testet (se `tests/unit/login-page.test.tsx` og
+`tests/unit/parse-query.test.ts`):**
+- Et udløbet eller allerede brugt loginlink giver en tydelig fejlbesked på
+  `/login` uden redirect.
+- Et loginlink åbnet på en anden enhed/browser end den, det blev anmodet
+  fra, fejler på samme kontrollerede måde (PKCE'ens iboende begrænsning).
+- En bruger, der er logget ind, men ikke er aktivt medlem af Ebeltoft
+  Marineforening, sendes tilbage til `/login?error=no_membership` med en
+  tydelig besked, i stedet for at se en tom eller fejlende side.
 
 ## Test af realtime
 
@@ -263,6 +282,14 @@ til, at I selv kører dem, første gang I har et projekt sat op — se kommentar
 
 ## Kendte begrænsninger
 
+- **PKCE kræver samme browser:** Fordi login bruger PKCE code-flow, skal
+  magic link-mailen åbnes i den samme browser/enhed, som anmodede den —
+  "code verifier"'en, der bruges til at fuldføre login, gemmes lokalt i den
+  browser, der startede loginnet. Åbnes linket i en anden browser eller på
+  en anden enhed (fx en telefon, hvor mailen blev anmodet fra en computer),
+  fejler udvekslingen med en tydelig fejlbesked på `/login` — det er ikke en
+  fejl i koden, men en iboende egenskab ved PKCE, og bør nævnes for
+  foreningens brugere.
 - Koden i dette projekt er udviklet og verificeret (typecheck, enhedstests,
   produktionsbuild) i et miljø **uden** forbindelse til et rigtigt Supabase-
   projekt. Alt, der kræver en levende database — login, RLS-håndhævelse i praksis,

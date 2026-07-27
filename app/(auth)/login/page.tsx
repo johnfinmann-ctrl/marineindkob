@@ -5,72 +5,120 @@ import { useRouter } from "next/navigation";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import { loginSchema } from "@/lib/validation/schemas";
 import { parseAuthHash } from "@/lib/auth/parse-hash";
+import { parseAuthQuery } from "@/lib/auth/parse-query";
 
 type PageStatus =
-  | "checking_link" // tjekker URL-fragmentet ved indlæsning
-  | "authenticating" // gyldige tokens fundet, opretter session
+  | "checking_link" // tjekker URL for kode/fragment/fejl ved indlæsning
+  | "authenticating" // gyldig kode eller tokens fundet, opretter session
   | "idle" // almindelig login-formular
   | "sending"
   | "sent"
   | "form_error" // fejl i selve login-formularen (fx ugyldig e-mail)
-  | "link_error"; // fejl fra magic-link-fragmentet (udløbet, ugyldigt, setSession fejlede)
+  | "link_error"; // fejl fra magic-linket (udløbet, ugyldigt, allerede brugt, ingen medlemskab, …)
 
+/**
+ * MarineIndkøb bruger PKCE code-flow som det ENE, kanoniske loginflow:
+ * signInWithOtp sender brugeren til /auth/callback, som udveksler koden
+ * server-side og redirecter til /forside (se
+ * app/(auth)/auth/callback/route.ts). Det er den flow, der aktivt bruges.
+ *
+ * Denne side håndterer derudover — som et sikkerhedsnet, ikke som et andet
+ * konkurrerende flow — to situationer, hvor brugeren alligevel kan lande
+ * her med login-data i selve URL'en:
+ *   1) Et "code" i query-strengen (fx fra et ældre magic-link, sendt før
+ *      emailRedirectTo blev sat til /auth/callback, eller hvis nogen
+ *      linker direkte til /login?code=...). Prioriteres højest.
+ *   2) Et access_token/refresh_token i URL-fragmentet (implicit flow),
+ *      hvis Supabase-projektet på noget tidspunkt skulle være sat til det.
+ * Findes hverken kode eller fragment, vises den almindelige formular.
+ */
 export default function LoginPage() {
   const router = useRouter();
   const [email, setEmail] = useState("");
   const [status, setStatus] = useState<PageStatus>("checking_link");
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
-  // Sikrer at fragment-håndteringen kun kører én gang, uanset gen-renders,
-  // så vi aldrig risikerer at kalde setSession flere gange eller ende i et
-  // redirect-loop tilbage til /login.
-  const hasHandledHash = useRef(false);
+  // Sikrer at URL-håndteringen kun kører én gang, uanset gen-renders, så vi
+  // aldrig kalder exchangeCodeForSession/setSession flere gange eller ender
+  // i et redirect-loop tilbage til /login.
+  const hasHandledUrl = useRef(false);
 
   useEffect(() => {
-    if (hasHandledHash.current) return;
-    hasHandledHash.current = true;
+    if (hasHandledUrl.current) return;
+    hasHandledUrl.current = true;
 
-    const parsed = parseAuthHash(window.location.hash);
+    function clearUrlParams() {
+      if (typeof window === "undefined") return;
+      window.history.replaceState(null, "", window.location.pathname);
+    }
 
-    if (parsed.type === "none") {
-      // Almindelig sideindlæsning uden magic-link-fragment — vis den
-      // normale login-formular. Rører IKKE ved e-mailfeltet her, så en
-      // eventuel browser-autofill i formularen nedenfor forbliver uændret.
+    // 1) Fejl videresendt fra /auth/callback (fx ?error=login_failed eller
+    //    ?error=no_membership) — vis den med det samme, uden at forsøge
+    //    nogen udveksling.
+    const query = parseAuthQuery(window.location.search);
+    if (query.type === "error") {
+      clearUrlParams();
+      setStatus("link_error");
+      setErrorMsg(query.errorDescription || "Loginlinket kunne ikke bekræftes. Anmod om et nyt loginlink nedenfor.");
+      return;
+    }
+
+    // 2) PKCE code i query-strengen — prioriteres over et evt. hash-fragment.
+    if (query.type === "code") {
+      setStatus("authenticating");
+      (async () => {
+        const supabase = createSupabaseBrowserClient();
+        const { data, error } = await supabase.auth.exchangeCodeForSession(query.code);
+        clearUrlParams();
+
+        if (error || !data.session) {
+          setStatus("link_error");
+          setErrorMsg(
+            "Loginlinket kunne ikke bekræftes. Det kan være udløbet, allerede brugt, eller åbnet i en anden browser end den, du anmodede fra. Anmod om et nyt loginlink nedenfor."
+          );
+          return;
+        }
+
+        router.replace("/forside");
+        router.refresh();
+      })();
+      return;
+    }
+
+    // 3) Intet code — tjek for et implicit-flow hash-fragment (bevaret for
+    //    bagudkompatibilitet, men er ikke det flow, appen selv bruger).
+    const hash = parseAuthHash(window.location.hash);
+
+    if (hash.type === "none") {
       setStatus("idle");
       return;
     }
 
-    if (parsed.type === "error") {
-      // Fjern det følsomme fragment fra adresselinjen med det samme, også
-      // ved fejl, så det ikke ligger synligt eller kan genindlæses/deles.
-      clearHashFromUrl();
+    if (hash.type === "error") {
+      clearUrlParams();
       setStatus("link_error");
       setErrorMsg(
-        parsed.errorDescription || "Loginlinket er ugyldigt eller udløbet. Anmod om et nyt loginlink nedenfor."
+        hash.errorDescription || "Loginlinket er ugyldigt eller udløbet. Anmod om et nyt loginlink nedenfor."
       );
       return;
     }
 
-    if (parsed.type === "incomplete") {
-      clearHashFromUrl();
+    if (hash.type === "incomplete") {
+      clearUrlParams();
       setStatus("link_error");
       setErrorMsg("Loginlinket er ufuldstændigt. Anmod om et nyt loginlink nedenfor.");
       return;
     }
 
-    // parsed.type === "tokens" — gyldigt magic-link-fragment fundet.
+    // hash.type === "tokens"
     setStatus("authenticating");
-
     (async () => {
       const supabase = createSupabaseBrowserClient();
       const { data, error } = await supabase.auth.setSession({
-        access_token: parsed.accessToken,
-        refresh_token: parsed.refreshToken
+        access_token: hash.accessToken,
+        refresh_token: hash.refreshToken
       });
-
-      // Fjern tokenfragmentet fra adresselinjen uanset udfald — det må
-      // aldrig blive stående synligt eller havne i browserhistorik/deling.
-      clearHashFromUrl();
+      clearUrlParams();
 
       if (error || !data.session) {
         setStatus("link_error");
@@ -78,17 +126,10 @@ export default function LoginPage() {
         return;
       }
 
-      // Sessionen er bekræftet oprettet — send brugeren til app-forsiden.
       router.replace("/forside");
       router.refresh();
     })();
   }, [router]);
-
-  function clearHashFromUrl() {
-    if (typeof window === "undefined") return;
-    const url = window.location.pathname + window.location.search;
-    window.history.replaceState(null, "", url);
-  }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -106,7 +147,9 @@ export default function LoginPage() {
     const { error } = await supabase.auth.signInWithOtp({
       email,
       options: {
-        emailRedirectTo: `${window.location.origin}/login`
+        // Det ene, kanoniske redirect-mål: en server-route, der udveksler
+        // PKCE-koden og sætter sessionscookien, før brugeren ser noget.
+        emailRedirectTo: `${window.location.origin}/auth/callback`
       }
     });
 
@@ -142,8 +185,8 @@ export default function LoginPage() {
             <div className="text-3xl mb-2">📩</div>
             <p className="text-navy font-bold mb-1">Tjek din e-mail</p>
             <p className="text-sm text-[#4a5a63]">
-              Vi har sendt et sikkert loginlink til <b>{email}</b>. Åbn det fra din telefon eller
-              computer for at logge ind — der kræves ingen adgangskode.
+              Vi har sendt et sikkert loginlink til <b>{email}</b>. Åbn det fra samme browser og
+              enhed, som du anmodede fra, for at logge ind — der kræves ingen adgangskode.
             </p>
           </div>
         )}
