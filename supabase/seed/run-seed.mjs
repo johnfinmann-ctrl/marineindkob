@@ -1,14 +1,17 @@
 // =============================================================
 // MarineIndkøb — Fase 3
-// Seed-script: opretter organisation, testbrugere og demodata.
+// Seed-script: opretter organisation, de rigtige brugere og demodata
+// (produkter, butikker, tilbud, indkøbsliste, arrangementer).
 // =============================================================
 // Kør med:  npm run seed
 // Kræver .env.local med NEXT_PUBLIC_SUPABASE_URL og
 // SUPABASE_SERVICE_ROLE_KEY (se README, afsnit "Seed-data").
+// SUPABASE_SERVICE_ROLE_KEY læses UDELUKKENDE fra .env.local via dotenv
+// nedenfor — den er aldrig hardcodet og logges aldrig af dette script.
 //
-// Scriptet er "idempotent-venligt": kør det roligt igen, hvis noget
-// fejler undervejs — det springer allerede oprettede rækker over,
-// hvor det er muligt at genkende dem (organisation, produkter, butikker).
+// Scriptet er idempotent: kør det roligt igen, så mange gange I vil.
+// Organisationen, brugerne, medlemskaberne, produkterne og butikkerne
+// genbruges eller opdateres — der oprettes aldrig dubletter.
 // =============================================================
 
 import { createClient } from "@supabase/supabase-js";
@@ -32,12 +35,22 @@ const supabase = createClient(SUPABASE_URL, SERVICE_ROLE_KEY, {
 
 const ORG_NAME = "Ebeltoft Marineforening";
 
-// Testbrugere. Disse e-mailadresser er ikke rigtige postkasser —
-// erstat dem med foreningens egne e-mails, før I bruger appen i praksis.
+// De rigtige brugere for Ebeltoft Marineforening. Ingen demo-/testbrugere
+// (Jens, Anna, Bo) oprettes længere — kun de personer, foreningen faktisk
+// skal bruge appen med.
 const TEST_USERS = [
-  { email: "jens@marineindkob-demo.dk", full_name: "Jens", initials: "J", role: "indkober" },
-  { email: "anna@marineindkob-demo.dk", full_name: "Anna", initials: "A", role: "indkober" },
-  { email: "bo.admin@marineindkob-demo.dk", full_name: "Bo", initials: "B", role: "administrator" }
+  {
+    email: "john.finmann@gmail.com",
+    full_name: "John Finmann",
+    initials: "JF",
+    role: "administrator"
+  },
+  {
+    email: "callepetersen@gmail.com",
+    full_name: "Calle Pedersen",
+    initials: "CP",
+    role: "indkober"
+  }
 ];
 
 async function upsertOrganization() {
@@ -57,27 +70,53 @@ async function upsertOrganization() {
   return data.id;
 }
 
+async function findUserByEmail(email) {
+  const target = email.trim().toLowerCase();
+  let page = 1;
+  const perPage = 200;
+  // Slår op på tværs af sider, så vi finder brugeren, uanset hvor mange
+  // andre brugere der allerede findes i Supabase-projektet.
+  while (true) {
+    const { data, error } = await supabase.auth.admin.listUsers({ page, perPage });
+    if (error) throw error;
+    const found = data.users.find((u) => u.email?.toLowerCase() === target);
+    if (found) return found;
+    if (data.users.length < perPage) return null; // sidste side er nået
+    page += 1;
+  }
+}
+
 async function upsertUser(email, full_name, initials) {
-  // Opret bruger via Auth Admin API. E-mailen bekræftes automatisk,
-  // og der sættes IKKE en adgangskode, da login foregår med magic link.
-  const { data: created, error } = await supabase.auth.admin.createUser({
-    email,
-    email_confirm: true,
-    user_metadata: { full_name }
-  });
+  // Genbrug en eksisterende Supabase-bruger, hvis e-mailen allerede findes —
+  // både John og Calle kan sagtens allerede være oprettet fra en tidligere
+  // kørsel, eller fordi en administrator har inviteret dem via appen.
+  const existingUser = await findUserByEmail(email);
 
   let userId;
-  if (error) {
-    if (error.message?.toLowerCase().includes("already been registered")) {
-      const { data: list } = await supabase.auth.admin.listUsers();
-      const found = list.users.find((u) => u.email === email);
-      if (!found) throw error;
-      userId = found.id;
-    } else {
-      throw error;
-    }
+  if (existingUser) {
+    userId = existingUser.id;
   } else {
-    userId = created.user.id;
+    // Opret bruger via Auth Admin API. E-mailen bekræftes automatisk,
+    // og der sættes IKKE en adgangskode, da login foregår med magic link.
+    const { data: created, error } = await supabase.auth.admin.createUser({
+      email,
+      email_confirm: true,
+      user_metadata: { full_name }
+    });
+
+    if (error) {
+      // Håndterer et sjældent kapløb, hvor brugeren blev oprettet af en
+      // anden proces mellem vores opslag og vores create-kald ovenfor.
+      if (error.message?.toLowerCase().includes("already been registered")) {
+        const foundAfterAll = await findUserByEmail(email);
+        if (!foundAfterAll) throw error;
+        userId = foundAfterAll.id;
+      } else {
+        throw error;
+      }
+    } else {
+      userId = created.user.id;
+    }
   }
 
   await supabase
@@ -409,7 +448,7 @@ async function main() {
   const orgId = await upsertOrganization();
   console.log("Organisation:", orgId);
 
-  console.log("Opretter testbrugere …");
+  console.log("Opretter brugere …");
   const userIds = {};
   let adminUserId = null;
   for (const u of TEST_USERS) {
@@ -418,9 +457,10 @@ async function main() {
     if (u.role === "administrator") adminUserId = id;
   }
   for (const u of TEST_USERS) {
-    await upsertMembership(orgId, userIds[u.full_name], u.role, adminUserId);
+    const isAdminSelf = u.role === "administrator";
+    await upsertMembership(orgId, userIds[u.full_name], u.role, isAdminSelf ? null : adminUserId);
   }
-  console.log("Brugere oprettet:", TEST_USERS.map((u) => `${u.full_name} (${u.role})`).join(", "));
+  console.log("Brugere klar:", TEST_USERS.map((u) => `${u.full_name} <${u.email}> (${u.role})`).join(", "));
 
   console.log("Opretter kategorier og enheder …");
   const { catMap, unitMap } = await seedCategoriesAndUnits(orgId);
@@ -437,9 +477,14 @@ async function main() {
   await seedOffersAndEvents(orgId, productIds, storeIds, adminUserId);
 
   console.log("\nFærdig!");
-  console.log("Organisation-id (brug som NEXT_PUBLIC_DEFAULT_ORG_ID):", orgId);
+  console.log("----------------------------------------------------------------");
+  console.log("Organisationens UUID (kopiér linjen nedenfor ind i .env.local):");
+  console.log(`NEXT_PUBLIC_DEFAULT_ORG_ID=${orgId}`);
+  console.log("----------------------------------------------------------------");
   console.log(
-    "\nHusk: testbrugerne har ingen adgangskode. De logger ind med magic link på de e-mails, du har sat i TEST_USERS (ret dem i supabase/seed/run-seed.mjs til foreningens rigtige e-mails, før I bruger appen i praksis)."
+    "\nJohn Finmann (administrator) og Calle Pedersen (indkøber) har nu en profil, er aktive\n" +
+      "medlemmer af Ebeltoft Marineforening med den korrekte rolle, og kan begge logge ind med\n" +
+      "magic link på deres e-mail fra login-siden. Ingen adgangskode er nødvendig eller sat."
   );
 }
 

@@ -6,30 +6,31 @@ manuel test — jf. Fase 3-oplægget, afsnit 25 ("Realtime-test").
 
 Testen kræver, at du har:
 1. Et rigtigt Supabase-projekt med migrations og seed-data kørt.
-2. To testbrugere logget ind (fx Jens og Anna, se README, afsnit "Seed-data").
+2. De to rigtige brugere logget ind (John Finmann og Calle Pedersen, se README,
+   afsnit "Seed-data og brugere").
 3. Appen kørende (lokalt via `npm run dev`, eller på Vercel).
 
 ## Testprocedure
 
-1. **Jens åbner appen** på sin telefon/computer og logger ind via magic link.
+1. **John åbner appen** på sin telefon/computer og logger ind via magic link.
    Han går til **Indkøbsliste**.
-2. **Anna åbner appen** på en anden enhed (eller en anden browser/inkognitovindue)
-   og logger ind. Hun går også til **Indkøbsliste**.
-3. **Jens reserverer en vare** — fx "8 glas sild" — ved at trykke
+2. **Calle åbner appen** på en anden enhed (eller en anden browser/inkognitovindue)
+   og logger ind. Han går også til **Indkøbsliste**.
+3. **John reserverer en vare** — fx "8 glas sild" — ved at trykke
    "Jeg køber denne".
-4. **Forventet resultat:** Uden at Anna genindlæser siden, skal hun inden for
-   få sekunder se varen skifte til "Jens køber denne · reserveret kl. HH:MM".
-   Knappen "Jeg køber denne" skal være forsvundet for Anna på netop den vare.
-5. **Anna forsøger** at trykke "Jeg køber denne" på en ANDEN vare, som ikke er
+4. **Forventet resultat:** Uden at Calle genindlæser siden, skal han inden for
+   få sekunder se varen skifte til "John køber denne · reserveret kl. HH:MM".
+   Knappen "Jeg køber denne" skal være forsvundet for Calle på netop den vare.
+5. **Calle forsøger** at trykke "Jeg køber denne" på en ANDEN vare, som ikke er
    reserveret — det skal lykkes uden problemer (kun den specifikke vare er låst).
-6. **Jens registrerer varen som købt** (via "Registrér køb" → "Købt" →
+6. **John registrerer varen som købt** (via "Registrér køb" → "Købt" →
    "Afslut og opdatér lager").
-7. **Forventet resultat:** Anna skal — uden at genindlæse — se:
-   - Varens status skifte til "Købt af Jens kl. HH:MM" på indkøbslisten.
+7. **Forventet resultat:** Calle skal — uden at genindlæse — se:
+   - Varens status skifte til "Købt af John kl. HH:MM" på indkøbslisten.
    - Lagerets antal for "Marinerede sild" stige tilsvarende på Lager-siden,
-     hvis hun har den åben, eller ved næste besøg på siden.
-8. **Bo (administrator) logger ind** i en tredje session og bekræfter under
-   **Admin → Ændringslog**, at både reservationen og købet fremgår med
+     hvis han har den åben, eller ved næste besøg på siden.
+8. **John (administrator) tjekker** i en tredje fane/session **Admin →
+   Ændringslog** og bekræfter, at både reservationen og købet fremgår med
    korrekt bruger og tidspunkt.
 
 ## Hvad der bekræfter, at realtime virker korrekt

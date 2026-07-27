@@ -117,32 +117,34 @@ Kopiér `.env.example` til `.env.local` og udfyld fra Supabase Studio → **Sett
 `.env.local` er allerede i `.gitignore` og bliver derfor aldrig committet. Kontrollér
 altid `git status`, før I committer, hvis I er i tvivl.
 
-## Seed-data og testbrugere
+## Seed-data og brugere
 
-Seed-scriptet opretter organisationen, tre testbrugere, de 18 produkter, de fem
-butikker og den øvrige demodata fra Fase 2.
+Seed-scriptet opretter organisationen, de to rigtige brugere, de 18 produkter, de
+fem butikker og den øvrige demodata fra Fase 2 (produkter/butikker/tilbud er
+stadig markeret som demonstrationsdata, indtil I selv retter priser og lager til).
 
 ```bash
 npm run seed
 ```
 
-Testbrugerne (rediger e-mails i `supabase/seed/run-seed.mjs`, før I bruger appen i
-praksis — de er IKKE rigtige postkasser):
+Brugerne, der oprettes/genbruges (rediger listen i
+`supabase/seed/run-seed.mjs`, hvis foreningen får flere indkøbere):
 
-| Navn | E-mail (demo) | Rolle |
+| Navn | E-mail | Rolle |
 |---|---|---|
-| Jens | jens@marineindkob-demo.dk | Indkøber |
-| Anna | anna@marineindkob-demo.dk | Indkøber |
-| Bo | bo.admin@marineindkob-demo.dk | Administrator |
+| John Finmann | john.finmann@gmail.com | Administrator |
+| Calle Pedersen | callepetersen@gmail.com | Indkøber |
 
-Testbrugerne har ingen adgangskode — de logger ind med magic link på deres e-mail
-(se "Test af login" nedenfor).
+Begge logger ind med magic link på deres e-mail — der er ikke sat nogen
+adgangskode (se "Test af login" nedenfor). Scriptet genbruger en eksisterende
+Supabase-bruger, hvis e-mailen allerede findes, i stedet for at oprette en ny.
 
 Scriptet er skrevet, så det roligt kan køres igen — det springer allerede
-oprettede organisationer, produkter og butikker over.
+oprettede organisationer, brugere, medlemskaber, produkter og butikker over
+eller opdaterer dem, i stedet for at oprette dubletter.
 
 **Nulstil demonstrationsdata:** Kør `npm run seed` igen. Det opretter ikke
-dubletter af organisation, produkter eller butikker, men indkøbsliste- og
+dubletter af organisation, brugere, produkter eller butikker, men indkøbsliste- og
 behovsposter oprettes kun, hvis de ikke allerede findes. For en fuldstændig
 nulstilling af transaktionsdata (indkøbsliste, tilbud, arrangementer) i en
 testperiode kan I køre:
@@ -154,11 +156,11 @@ og derefter køre `npm run seed` igen.
 
 ## Oprettelse af første administrator
 
-Seed-scriptet gør automatisk "Bo" til administrator. Skal I gøre en anden bruger
-til administrator (fx jer selv med jeres rigtige e-mail):
+Seed-scriptet gør automatisk John Finmann til administrator. Skal I gøre en
+anden bruger til administrator:
 
-1. Ret e-mailen for "Bo" i `supabase/seed/run-seed.mjs`, eller opret brugeren
-   manuelt via Supabase Studio → **Authentication → Users → Invite user**.
+1. Ret administratorens e-mail i `supabase/seed/run-seed.mjs`, eller opret
+   brugeren manuelt via Supabase Studio → **Authentication → Users → Invite user**.
 2. Kør `npm run seed` igen — scriptet opretter/opdaterer profil og medlemskab.
 3. Alternativt: log ind som en eksisterende administrator og brug **Admin →
    Invitér ny bruger** i selve appen.
@@ -181,20 +183,21 @@ til administrator (fx jer selv med jeres rigtige e-mail):
 ## Test af login
 
 1. Åbn appen (lokalt eller på Vercel) og gå til login-siden.
-2. Indtast en af testbrugernes e-mails (se ovenfor).
-3. Tjek **Supabase Studio → Authentication → Logs**, eller testbrugerens
-   postkasse (hvis det er en rigtig e-mail), for magic link-mailen.
-   *(I test/udvikling kan I også finde linket direkte i Supabase Studios logs,
-   hvis I ikke har konfigureret en rigtig e-mail-udbyder endnu.)*
-4. Klik linket — I bliver sendt til `/auth/callback` og herefter til `/forside`.
+2. Indtast en af de to brugeres e-mail (se "Seed-data og brugere" ovenfor).
+3. Tjek postkassen for magic link-mailen (eller **Supabase Studio →
+   Authentication → Logs**, hvis I ikke har konfigureret en rigtig
+   e-mail-udbyder endnu).
+4. Klik linket — I lander tilbage på `/login` med tokens i URL-fragmentet;
+   login-siden opretter automatisk sessionen og sender jer videre til
+   `/forside` i løbet af et øjeblik.
 5. Bekræft, at navnet i topbaren/sidemenuen matcher den bruger, I loggede ind som.
 
 ## Test af realtime
 
 Se den fulde, trin-for-trin dokumenterede procedure i
 [`tests/realtime/REALTIME-TEST.md`](tests/realtime/REALTIME-TEST.md). Kort fortalt:
-Jens og Anna logger ind samtidig i hver sin browser, Jens reserverer og køber en
-vare, og Anna skal se ændringerne uden at genindlæse siden.
+John og Calle logger ind samtidig i hver sin browser, John reserverer og køber en
+vare, og Calle skal se ændringerne uden at genindlæse siden.
 
 ## Tests
 
