@@ -33,6 +33,53 @@ const supabase = createClient(SUPABASE_URL, SERVICE_ROLE_KEY, {
   auth: { autoRefreshToken: false, persistSession: false }
 });
 
+/**
+ * Kaster en tydelig, kontekstbærende fejl, hvis Supabase har returneret en
+ * fejl. Bruges efter ethvert select/insert/upsert, så scriptet aldrig
+ * fortsætter stille videre med `data === null` og senere crasher med en
+ * uigennemskuelig "Cannot read properties of null"-fejl.
+ */
+function assertNoError(context, error) {
+  if (error) {
+    throw new Error(`${context} fejlede i Supabase: ${error.message}${error.code ? ` (kode: ${error.code})` : ""}`);
+  }
+}
+
+/**
+ * Finder én række, der matcher `match`-kolonnerne, eller opretter den, hvis
+ * den ikke findes. Bruges i stedet for `.upsert(..., { onConflict })`, da
+ * onConflict kræver en unik/eksklusions-constraint i databasen, som ikke
+ * nødvendigvis findes (se migration 005_fix_missing_unique_constraints.sql).
+ * Denne funktion virker uanset om en sådan constraint findes, og tjekker
+ * eksplicit for fejl og manglende data ved hvert trin.
+ */
+async function findOrCreateSingle({ table, match, insertPayload, selectCols = "id" }) {
+  const matchDescription = `${table} (${Object.entries(match)
+    .map(([k, v]) => `${k}=${v}`)
+    .join(", ")})`;
+
+  const { data: existing, error: selectError } = await supabase
+    .from(table)
+    .select(selectCols)
+    .match(match)
+    .maybeSingle();
+  assertNoError(`Opslag på ${matchDescription}`, selectError);
+  if (existing) return existing;
+
+  const { data: created, error: insertError } = await supabase
+    .from(table)
+    .insert(insertPayload)
+    .select(selectCols)
+    .single();
+  assertNoError(`Oprettelse af ${matchDescription}`, insertError);
+  if (!created) {
+    throw new Error(
+      `Oprettelse af ${matchDescription} gav intet resultat, selvom Supabase ikke returnerede nogen fejl.`
+    );
+  }
+  return created;
+}
+
 const ORG_NAME = "Ebeltoft Marineforening";
 
 // De rigtige brugere for Ebeltoft Marineforening. Ingen demo-/testbrugere
@@ -54,11 +101,12 @@ const TEST_USERS = [
 ];
 
 async function upsertOrganization() {
-  const { data: existing } = await supabase
+  const { data: existing, error: selectError } = await supabase
     .from("organizations")
     .select("id")
     .eq("name", ORG_NAME)
     .maybeSingle();
+  assertNoError(`Opslag på organisation "${ORG_NAME}"`, selectError);
   if (existing) return existing.id;
 
   const { data, error } = await supabase
@@ -66,7 +114,7 @@ async function upsertOrganization() {
     .insert({ name: ORG_NAME })
     .select("id")
     .single();
-  if (error) throw error;
+  assertNoError(`Oprettelse af organisation "${ORG_NAME}"`, error);
   return data.id;
 }
 
@@ -119,16 +167,28 @@ async function upsertUser(email, full_name, initials) {
     }
   }
 
-  await supabase
+  const { error: profileError } = await supabase
     .from("profiles")
     .upsert({ id: userId, full_name, initials }, { onConflict: "id" });
+  assertNoError(`Oprettelse/opdatering af profil for ${email}`, profileError);
 
   return userId;
 }
 
 async function upsertMembership(orgId, userId, roleCode, invitedBy) {
-  const { data: role } = await supabase.from("roles").select("id").eq("code", roleCode).single();
-  await supabase.from("organization_members").upsert(
+  const { data: role, error: roleError } = await supabase
+    .from("roles")
+    .select("id")
+    .eq("code", roleCode)
+    .maybeSingle();
+  assertNoError(`Opslag på rollen "${roleCode}"`, roleError);
+  if (!role) {
+    throw new Error(
+      `Rollen "${roleCode}" findes ikke i "roles"-tabellen. Kør migration 001_schema.sql (den seeder rollerne "indkober" og "administrator"), før du kører seed-scriptet.`
+    );
+  }
+
+  const { error: membershipError } = await supabase.from("organization_members").upsert(
     {
       organization_id: orgId,
       user_id: userId,
@@ -138,27 +198,20 @@ async function upsertMembership(orgId, userId, roleCode, invitedBy) {
     },
     { onConflict: "organization_id,user_id" }
   );
+  assertNoError(`Oprettelse/opdatering af medlemskab (organisation ${orgId}, bruger ${userId})`, membershipError);
 }
 
 async function seedCategoriesAndUnits(orgId) {
   const categories = ["Bagværk", "Kølevarer", "Fisk", "Pålæg", "Kolonial", "Drikkevarer", "Forbrugsvarer"];
   const catMap = {};
   for (const name of categories) {
-    const { data } = await supabase
-      .from("product_categories")
-      .upsert({ organization_id: orgId, name }, { onConflict: "organization_id,name" })
-      .select("id, name")
-      .maybeSingle();
-    if (data) catMap[name] = data.id;
-    else {
-      const { data: existing } = await supabase
-        .from("product_categories")
-        .select("id")
-        .eq("organization_id", orgId)
-        .eq("name", name)
-        .single();
-      catMap[name] = existing.id;
-    }
+    const row = await findOrCreateSingle({
+      table: "product_categories",
+      match: { organization_id: orgId, name },
+      insertPayload: { organization_id: orgId, name },
+      selectCols: "id, name"
+    });
+    catMap[name] = row.id;
   }
 
   const units = [
@@ -167,22 +220,13 @@ async function seedCategoriesAndUnits(orgId) {
   ];
   const unitMap = {};
   for (const [code, name] of units) {
-    const { data: existing } = await supabase
-      .from("product_units")
-      .select("id")
-      .eq("organization_id", orgId)
-      .eq("code", code)
-      .maybeSingle();
-    if (existing) {
-      unitMap[code] = existing.id;
-    } else {
-      const { data } = await supabase
-        .from("product_units")
-        .insert({ organization_id: orgId, code, name })
-        .select("id")
-        .single();
-      unitMap[code] = data.id;
-    }
+    const row = await findOrCreateSingle({
+      table: "product_units",
+      match: { organization_id: orgId, code },
+      insertPayload: { organization_id: orgId, code, name },
+      selectCols: "id, code"
+    });
+    unitMap[code] = row.id;
   }
   return { catMap, unitMap };
 }
@@ -220,12 +264,13 @@ const STORES = [
 async function seedProducts(orgId, catMap, unitMap, adminUserId) {
   const productIds = {};
   for (const p of PRODUCTS) {
-    const { data: existing } = await supabase
+    const { data: existing, error: existingError } = await supabase
       .from("products")
       .select("id")
       .eq("organization_id", orgId)
       .eq("name", p.name)
       .maybeSingle();
+    assertNoError(`Opslag på produkt "${p.name}"`, existingError);
 
     let id;
     if (existing) {
@@ -246,20 +291,21 @@ async function seedProducts(orgId, catMap, unitMap, adminUserId) {
         })
         .select("id")
         .single();
-      if (error) throw error;
+      assertNoError(`Oprettelse af produkt "${p.name}"`, error);
       id = data.id;
     }
     productIds[p.name] = id;
 
-    const { data: stockExisting } = await supabase
+    const { data: stockExisting, error: stockSelectError } = await supabase
       .from("stock_items")
       .select("id")
       .eq("organization_id", orgId)
       .eq("product_id", id)
       .maybeSingle();
+    assertNoError(`Opslag på lagerpost for "${p.name}"`, stockSelectError);
 
     if (!stockExisting) {
-      await supabase.from("stock_items").insert({
+      const { error: stockInsertError } = await supabase.from("stock_items").insert({
         organization_id: orgId,
         product_id: id,
         quantity: p.stock,
@@ -268,6 +314,7 @@ async function seedProducts(orgId, catMap, unitMap, adminUserId) {
         average_weekly_consumption: p.weeklyUse,
         updated_by: adminUserId
       });
+      assertNoError(`Oprettelse af lagerpost for "${p.name}"`, stockInsertError);
     }
   }
   return productIds;
@@ -276,12 +323,13 @@ async function seedProducts(orgId, catMap, unitMap, adminUserId) {
 async function seedStores(orgId, adminUserId) {
   const storeIds = {};
   for (const s of STORES) {
-    const { data: existing } = await supabase
+    const { data: existing, error: existingError } = await supabase
       .from("stores")
       .select("id")
       .eq("organization_id", orgId)
       .eq("name", s.name)
       .maybeSingle();
+    assertNoError(`Opslag på butik "${s.name}"`, existingError);
     if (existing) {
       storeIds[s.name] = existing.id;
       continue;
@@ -291,34 +339,37 @@ async function seedStores(orgId, adminUserId) {
       .insert({ organization_id: orgId, ...s, created_by: adminUserId, updated_by: adminUserId })
       .select("id")
       .single();
-    if (error) throw error;
+    assertNoError(`Oprettelse af butik "${s.name}"`, error);
     storeIds[s.name] = data.id;
   }
   return storeIds;
 }
 
 async function seedTravelSettings(orgId, adminUserId) {
-  const { data: existing } = await supabase
+  const { data: existing, error: existingError } = await supabase
     .from("travel_cost_settings")
     .select("id")
     .eq("organization_id", orgId)
     .maybeSingle();
+  assertNoError("Opslag på transportindstillinger", existingError);
   if (existing) return;
-  await supabase.from("travel_cost_settings").insert({
+  const { error: insertError } = await supabase.from("travel_cost_settings").insert({
     organization_id: orgId,
     price_per_km: 3.2,
     average_speed_kmh: 45,
     updated_by: adminUserId
   });
+  assertNoError("Oprettelse af transportindstillinger", insertError);
 }
 
 async function seedShoppingListAndNeeds(orgId, productIds, storeIds, adminUserId) {
-  const { data: existingList } = await supabase
+  const { data: existingList, error: existingListError } = await supabase
     .from("shopping_lists")
     .select("id")
     .eq("organization_id", orgId)
     .eq("status", "aktiv")
     .maybeSingle();
+  assertNoError("Opslag på aktiv indkøbsliste", existingListError);
 
   let listId = existingList?.id;
   if (!listId) {
@@ -327,7 +378,7 @@ async function seedShoppingListAndNeeds(orgId, productIds, storeIds, adminUserId
       .insert({ organization_id: orgId, name: "Aktiv indkøbsliste", created_by: adminUserId })
       .select("id")
       .single();
-    if (error) throw error;
+    assertNoError("Oprettelse af aktiv indkøbsliste", error);
     listId = data.id;
   }
 
@@ -340,14 +391,15 @@ async function seedShoppingListAndNeeds(orgId, productIds, storeIds, adminUserId
     { product: "Opvasketabs", current: 2, min: 3, use: 0.5, needBy: "2026-08-06", priority: "Lav", comment: "", status: "Kritisk" }
   ];
   for (const n of needs) {
-    const { data: exists } = await supabase
+    const { data: exists, error: existsError } = await supabase
       .from("shopping_needs")
       .select("id")
       .eq("organization_id", orgId)
       .eq("product_id", productIds[n.product])
       .maybeSingle();
+    assertNoError(`Opslag på behov for "${n.product}"`, existsError);
     if (exists) continue;
-    await supabase.from("shopping_needs").insert({
+    const { error: insertError } = await supabase.from("shopping_needs").insert({
       organization_id: orgId,
       product_id: productIds[n.product],
       current_stock: n.current,
@@ -360,6 +412,7 @@ async function seedShoppingListAndNeeds(orgId, productIds, storeIds, adminUserId
       created_by: adminUserId,
       updated_by: adminUserId
     });
+    assertNoError(`Oprettelse af behov for "${n.product}"`, insertError);
   }
 
   const listItems = [
@@ -372,14 +425,15 @@ async function seedShoppingListAndNeeds(orgId, productIds, storeIds, adminUserId
     { product: "Snaps", store: "Djurs Drikkevarer", qty: 6, price: 179 }
   ];
   for (const li of listItems) {
-    const { data: exists } = await supabase
+    const { data: exists, error: existsError } = await supabase
       .from("shopping_list_items")
       .select("id")
       .eq("shopping_list_id", listId)
       .eq("product_id", productIds[li.product])
       .maybeSingle();
+    assertNoError(`Opslag på indkøbslistevare "${li.product}"`, existsError);
     if (exists) continue;
-    await supabase.from("shopping_list_items").insert({
+    const { error: insertError } = await supabase.from("shopping_list_items").insert({
       organization_id: orgId,
       shopping_list_id: listId,
       product_id: productIds[li.product],
@@ -390,6 +444,7 @@ async function seedShoppingListAndNeeds(orgId, productIds, storeIds, adminUserId
       created_by: adminUserId,
       updated_by: adminUserId
     });
+    assertNoError(`Oprettelse af indkøbslistevare "${li.product}"`, insertError);
   }
 }
 
@@ -402,15 +457,16 @@ async function seedOffersAndEvents(orgId, productIds, storeIds, adminUserId) {
     { product: "Servietter", store: "Ebeltoft Discount", offer: 12, normal: 18, qty: 1, unit: "pakke", start: "2026-07-21", end: "2026-08-05", rating: "Godt tilbud", level: "green" }
   ];
   for (const o of offers) {
-    const { data: exists } = await supabase
+    const { data: exists, error: existsError } = await supabase
       .from("offers")
       .select("id")
       .eq("organization_id", orgId)
       .eq("product_id", productIds[o.product])
       .eq("store_id", storeIds[o.store])
       .maybeSingle();
+    assertNoError(`Opslag på tilbud "${o.product}"`, existsError);
     if (exists) continue;
-    await supabase.from("offers").insert({
+    const { error: insertError } = await supabase.from("offers").insert({
       organization_id: orgId,
       product_id: productIds[o.product],
       store_id: storeIds[o.store],
@@ -424,6 +480,7 @@ async function seedOffersAndEvents(orgId, productIds, storeIds, adminUserId) {
       rating_level: o.level,
       created_by: adminUserId
     });
+    assertNoError(`Oprettelse af tilbud "${o.product}"`, insertError);
   }
 
   const events = [
@@ -432,14 +489,18 @@ async function seedOffersAndEvents(orgId, productIds, storeIds, adminUserId) {
     { name: "Generalforsamling", date: "2026-09-20", guests: 30, menu: "Kaffe, kage og en øl", budget: 1200 }
   ];
   for (const e of events) {
-    const { data: exists } = await supabase
+    const { data: exists, error: existsError } = await supabase
       .from("events")
       .select("id")
       .eq("organization_id", orgId)
       .eq("name", e.name)
       .maybeSingle();
+    assertNoError(`Opslag på arrangement "${e.name}"`, existsError);
     if (exists) continue;
-    await supabase.from("events").insert({ organization_id: orgId, ...e, created_by: adminUserId, updated_by: adminUserId });
+    const { error: insertError } = await supabase
+      .from("events")
+      .insert({ organization_id: orgId, ...e, created_by: adminUserId, updated_by: adminUserId });
+    assertNoError(`Oprettelse af arrangement "${e.name}"`, insertError);
   }
 }
 
