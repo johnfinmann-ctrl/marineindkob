@@ -71,7 +71,7 @@ npm run dev
 Appen kører herefter på http://localhost:3000 og sender dig til login-siden.
 
 **Verificeret i forbindelse med denne leverance:** `npm install`, `npx tsc --noEmit`,
-`npm run test` (32 enhedstests) og `npm run build` (produktionsbuild) er alle kørt
+`npm run test` (75 enhedstests) og `npm run build` (produktionsbuild) er alle kørt
 og bestået i det miljø, koden er udviklet i. Der er ikke tilknyttet noget Supabase-
 projekt i det miljø, så alt, der kræver en database (login, RLS, realtime), er
 verificeret gennem kodegennemgang og de dokumenterede test-procedurer i stedet —
@@ -98,9 +98,12 @@ npx supabase link --project-ref <dit-projekt-ref>
 npx supabase db push
 ```
 
-**Uden CLI:** Åbn hver fil i rækkefølge (001, 002, 003, 004) og indsæt indholdet i
-Supabase Studio → **SQL Editor** → **New query** → kør (Run). Kør dem én ad gangen,
-i den nævnte rækkefølge, da senere migrationer bygger videre på tidligere.
+**Uden CLI:** Åbn hver fil i rækkefølge (001, 002, 003, 004, 005, 006) og indsæt
+indholdet i Supabase Studio → **SQL Editor** → **New query** → kør (Run). Kør dem
+én ad gangen, i den nævnte rækkefølge, da senere migrationer bygger videre på
+tidligere. Migration 006 tilføjer butiksadministration (adressefelter,
+butikstyper og strammere adgangskontrol) og er skrevet, så den er sikker at
+køre selvom I allerede har seedet butikker med den gamle, frie type-tekst.
 
 ## Miljøvariabler
 
@@ -153,6 +156,24 @@ delete from shopping_list_items where organization_id = '<jeres-org-id>';
 delete from shopping_needs where organization_id = '<jeres-org-id>';
 ```
 og derefter køre `npm run seed` igen.
+
+## Administrér butikker
+
+Under **Admin → Administrér butikker** (`/admin/butikker`) kan en administrator:
+
+- oprette, redigere, søge og filtrere butikker (på navn/adresse/by, type og
+  aktiv/inaktiv status)
+- deaktivere en butik uden at slette dens historik — deaktiverede butikker
+  forsvinder fra indkøbere og fra indkøbsforslag, men historiske tilbud og
+  køb, der peger på butikken, bevares uændret
+- slette en butik, men kun hvis den ikke er brugt i noget tilbud, nogen
+  indkøbsliste eller noget køb — databasen (ikke kun brugerfladen) forhindrer
+  sletning af en butik, der er i brug, og appen viser en tydelig besked om at
+  deaktivere den i stedet
+
+Indkøbere kan kun læse aktive butikker (håndhævet af Row Level Security, se
+migration 006), og indkøbsforslag bruger udelukkende aktive butikker, når de
+beregner samlet pris inklusive kørsel eller levering.
 
 ## Oprettelse af første administrator
 
@@ -221,7 +242,7 @@ vare, og Calle skal se ændringerne uden at genindlæse siden.
 ## Tests
 
 ```bash
-npm run test              # 32 enhedstests — kører uden database, altid grønne
+npm run test              # 75 enhedstests — kører uden database, altid grønne
 npm run test:integration  # Kræver et rigtigt Supabase-projekt, se testfilerne
 npx tsc --noEmit          # Typecheck
 npm run build             # Produktionsbuild
@@ -230,8 +251,11 @@ npm run build             # Produktionsbuild
 Enhedstests dækker: enhedspris (herunder ost-eksemplet fra Fase 1-oplægget),
 tilbudsvurdering, kørselspris, leveringspris, anbefalet mængde ("Køb nu / Køb kun
 det nødvendige / Vent" for hhv. kaffe-, sild- og karrysild-eksemplerne), besparelse,
-dansk valutaformat og statusovergange for indkøbslistevarer. Alle 32 er kørt og
-bestået i forbindelse med denne leverance.
+dansk valutaformat, statusovergange for indkøbslistevarer, login (PKCE-kode-flow og
+implicit hash-flow), validering af butiksdata (negative priser/afstande, gyldige
+butikstyper), og den samlede butiksøkonomi (kørsel/levering/minimumskøb) som
+indkøbsforslagene bruger. Alle 75 er kørt og bestået i forbindelse med denne
+leverance.
 
 Integrationstests og realtime-testen kræver et Supabase-projekt og er dokumenteret
 til, at I selv kører dem, første gang I har et projekt sat op — se kommentarerne

@@ -254,11 +254,11 @@ const PRODUCTS = [
 ];
 
 const STORES = [
-  { name: "Lokal Dagligvare Ebeltoft", type: "Supermarked", distance_km: 2.4, delivery: false, delivery_price: 0, min_order: 0, hours: "08–20" },
-  { name: "Ebeltoft Discount", type: "Discount", distance_km: 3.1, delivery: false, delivery_price: 0, min_order: 0, hours: "08–20" },
-  { name: "Djurs Drikkevarer", type: "Drikkevarer", distance_km: 6.5, delivery: true, delivery_price: 49, min_order: 300, hours: "10–17:30" },
-  { name: "Aarhus Catering Online", type: "Netbutik", distance_km: null, delivery: true, delivery_price: 99, min_order: 500, hours: "Online — altid åben" },
-  { name: "Mols Specialiteter", type: "Specialbutik", distance_km: 12, delivery: false, delivery_price: 0, min_order: 0, hours: "10–17" }
+  { name: "Lokal Dagligvare Ebeltoft", type: "supermarked", address: "Adelgade 12", postal_code: "8400", city: "Ebeltoft", distance_km: 2.4, delivery: false, delivery_price: 0, min_order: 0, hours: "08–20" },
+  { name: "Ebeltoft Discount", type: "discount", address: "Strandvejen 4", postal_code: "8400", city: "Ebeltoft", distance_km: 3.1, delivery: false, delivery_price: 0, min_order: 0, hours: "08–20" },
+  { name: "Djurs Drikkevarer", type: "specialbutik", address: "Industrivej 7", postal_code: "8410", city: "Rønde", distance_km: 6.5, delivery: true, delivery_price: 49, min_order: 300, hours: "10–17:30" },
+  { name: "Aarhus Catering Online", type: "onlinebutik", address: null, postal_code: null, city: "Aarhus", distance_km: null, delivery: true, delivery_price: 99, min_order: 500, hours: "Online — altid åben" },
+  { name: "Mols Specialiteter", type: "specialbutik", address: "Havnevej 3", postal_code: "8420", city: "Knebel", distance_km: 12, delivery: false, delivery_price: 0, min_order: 0, hours: "10–17" }
 ];
 
 async function seedProducts(orgId, catMap, unitMap, adminUserId) {

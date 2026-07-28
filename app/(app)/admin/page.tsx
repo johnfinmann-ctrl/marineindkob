@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
+import Link from "next/link";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import { useMembership } from "@/components/MembershipContext";
 import { Card, Pill, PrimaryButton, OutlineButton, SectionTitle } from "@/components/ui";
@@ -137,6 +138,18 @@ function AdminContent() {
           </div>
         ))}
       </Card>
+
+      <SectionTitle>Butikker</SectionTitle>
+      <Link href="/admin/butikker" className="card mb-3.5 flex items-center gap-3.5">
+        <div className="text-2xl">🏬</div>
+        <div>
+          <div className="font-serif font-bold text-navy text-base">Administrér butikker</div>
+          <div className="text-xs text-[#8A8A8A]">
+            Opret, redigér, aktivér/deaktivér og slet de butikker, indkøbsforslagene må bruge.
+          </div>
+        </div>
+        <div className="ml-auto text-[#8A8A8A]">→</div>
+      </Link>
 
       <SectionTitle>Invitér ny bruger</SectionTitle>
       <form onSubmit={handleInvite} className="card">

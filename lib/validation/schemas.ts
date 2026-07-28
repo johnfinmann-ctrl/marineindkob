@@ -56,6 +56,31 @@ export const inviteUserSchema = z.object({
 });
 export type InviteUserInput = z.infer<typeof inviteUserSchema>;
 
+export const STORE_TYPES = ["supermarked", "discount", "engros", "specialbutik", "onlinebutik"] as const;
+
+export const storeSchema = z.object({
+  name: z.string().trim().min(2, "Navnet skal være mindst 2 tegn."),
+  type: z.enum(STORE_TYPES, { message: "Vælg en gyldig butikstype." }),
+  address: z.string().trim().max(200).optional().or(z.literal("")),
+  postal_code: z
+    .string()
+    .trim()
+    .regex(/^\d{4}$/, "Postnummer skal være 4 cifre.")
+    .optional()
+    .or(z.literal("")),
+  city: z.string().trim().max(100).optional().or(z.literal("")),
+  distance_km: z
+    .number()
+    .min(0, "Afstand kan ikke være negativ.")
+    .max(2000, "Afstanden virker urealistisk høj.")
+    .optional(),
+  delivery: z.boolean(),
+  delivery_price: z.number().min(0, "Leveringsprisen kan ikke være negativ."),
+  min_order: z.number().min(0, "Minimumskøb kan ikke være negativt."),
+  hours: z.string().trim().max(100).optional().or(z.literal(""))
+});
+export type StoreInput = z.infer<typeof storeSchema>;
+
 export const loginSchema = z.object({
   email: z.string().email("Indtast en gyldig e-mailadresse.")
 });

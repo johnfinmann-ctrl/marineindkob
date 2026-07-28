@@ -44,6 +44,54 @@ export function calculateRealTotalPrice(itemsTotal: number, travelOrDeliveryCost
   return round2(itemsTotal + travelOrDeliveryCost);
 }
 
+export interface StoreEconomicsInput {
+  itemsTotal: number;
+  store: {
+    delivery: boolean;
+    distanceKm: number | null;
+    deliveryPrice: number;
+    minOrder: number;
+  };
+  pricePerKm: number;
+}
+
+export interface StoreEconomicsResult {
+  mode: "afhentning" | "levering";
+  transportCost: number;
+  totalPrice: number;
+  meetsMinimumOrder: boolean;
+  shortfall: number;
+}
+
+/**
+ * Beregner den samlede økonomi for at handle en given vare-total hos en
+ * bestemt butik — varepris plus enten kørsel eller levering, og om
+ * butikkens minimumskøb er nået. Bruges af indkøbsforslag, jf.
+ * Fase 4-oplægget, afsnit 6, så anbefalinger altid viser den reelle
+ * totalpris og ikke kun vareprisen.
+ */
+export function calculateStoreOptionEconomics(input: StoreEconomicsInput): StoreEconomicsResult {
+  if (input.store.delivery) {
+    const delivery = calculateDeliveryCost(input.itemsTotal, input.store.deliveryPrice, input.store.minOrder);
+    return {
+      mode: "levering",
+      transportCost: delivery.deliveryPrice,
+      totalPrice: calculateRealTotalPrice(input.itemsTotal, delivery.deliveryPrice),
+      meetsMinimumOrder: delivery.meetsMinimumOrder,
+      shortfall: delivery.shortfall
+    };
+  }
+
+  const transportCost = calculateTravelCost(input.store.distanceKm ?? 0, input.pricePerKm);
+  const meetsMinimumOrder = input.itemsTotal >= input.store.minOrder;
+  return {
+    mode: "afhentning",
+    transportCost,
+    totalPrice: calculateRealTotalPrice(input.itemsTotal, transportCost),
+    meetsMinimumOrder,
+    shortfall: meetsMinimumOrder ? 0 : round2(input.store.minOrder - input.itemsTotal)
+  };
+}
 export interface PurchaseOption {
   key: string;
   label: string;

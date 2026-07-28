@@ -5,6 +5,16 @@ import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import { useMembership } from "@/components/MembershipContext";
 import { Card, Pill, GoldButton, OutlineButton, SectionTitle } from "@/components/ui";
 import { calculateRecommendedQuantity, type RecommendationResult } from "@/lib/calculations/recommendations";
+import { calculateStoreOptionEconomics } from "@/lib/calculations/travel";
+import { formatCurrency } from "@/lib/calculations";
+
+interface StoreInfo {
+  id: string;
+  delivery: boolean;
+  distance_km: number | null;
+  delivery_price: number;
+  min_order: number;
+}
 
 interface ProductWithStock {
   id: string;
@@ -12,12 +22,13 @@ interface ProductWithStock {
   icon: string | null;
   default_weekly_use: number;
   stock: { quantity: number; minimum_quantity: number } | null;
-  offer: { id: string; offer_price: number; normal_price: number; store_id: string } | null;
+  offer: { id: string; offer_price: number; normal_price: number; store_id: string; store: StoreInfo | null } | null;
 }
 
 interface Recommendation {
   product: ProductWithStock;
   result: RecommendationResult;
+  economics: ReturnType<typeof calculateStoreOptionEconomics> | null;
 }
 
 export default function ForslagPage() {
@@ -50,25 +61,61 @@ export default function ForslagPage() {
       .select("product_id, quantity, minimum_quantity")
       .in("product_id", productIds);
 
+    // Indkøbsforslag må kun bruge AKTIVE butikker (Fase 4-oplægget, afsnit 6).
+    // "stores!inner" + filter på stores.active tvinger et inner join, så
+    // tilbud knyttet til en deaktiveret butik aldrig indgår i forslagene.
     const { data: offerRows } = await supabase
       .from("offers")
-      .select("id, product_id, offer_price, normal_price, store_id")
+      .select(
+        "id, product_id, offer_price, normal_price, store_id, store:stores!inner(id, delivery, distance_km, delivery_price, min_order, active)"
+      )
       .in("product_id", productIds)
-      .is("deleted_at", null);
+      .is("deleted_at", null)
+      .eq("stores.active", true);
+
+    const { data: travelSettings } = await supabase
+      .from("travel_cost_settings")
+      .select("price_per_km")
+      .eq("organization_id", membership.organizationId)
+      .maybeSingle();
+    const pricePerKm = travelSettings?.price_per_km ?? 3.2;
 
     const results: Recommendation[] = (products ?? []).map((p) => {
       const stock = stockRows?.find((s) => s.product_id === p.id) ?? null;
-      const offer = offerRows?.find((o) => o.product_id === p.id) ?? null;
+      const offerRow = (offerRows as unknown as Array<{
+        id: string;
+        product_id: string;
+        offer_price: number;
+        normal_price: number;
+        store_id: string;
+        store: StoreInfo | null;
+      }>)?.find((o) => o.product_id === p.id) ?? null;
+
       const result = calculateRecommendedQuantity({
         currentStock: stock?.quantity ?? 0,
         minStock: stock?.minimum_quantity ?? 0,
         weeklyUse: p.default_weekly_use,
-        offerPrice: offer?.offer_price,
-        normalPrice: offer?.normal_price,
+        offerPrice: offerRow?.offer_price,
+        normalPrice: offerRow?.normal_price,
         typicalWeeksBetweenOffers: 5,
         isLongLasting: p.default_weekly_use < 2.5
       });
-      return { product: { ...p, stock, offer }, result };
+
+      let economics: ReturnType<typeof calculateStoreOptionEconomics> | null = null;
+      if (offerRow?.store && result.recommendedQty > 0) {
+        economics = calculateStoreOptionEconomics({
+          itemsTotal: offerRow.offer_price * result.recommendedQty,
+          store: {
+            delivery: offerRow.store.delivery,
+            distanceKm: offerRow.store.distance_km,
+            deliveryPrice: offerRow.store.delivery_price,
+            minOrder: offerRow.store.min_order
+          },
+          pricePerKm
+        });
+      }
+
+      return { product: { ...p, stock, offer: offerRow }, result, economics };
     });
     setRecs(results);
     setLoading(false);
@@ -143,6 +190,18 @@ export default function ForslagPage() {
                     </>
                   )}
                 </div>
+                {r.economics && (
+                  <div className="text-xs text-[#4a5a63] mb-2.5">
+                    Samlet pris inkl. {r.economics.mode === "levering" ? "levering" : "kørsel"}:{" "}
+                    <b>{formatCurrency(r.economics.totalPrice)}</b>
+                    {!r.economics.meetsMinimumOrder && (
+                      <span className="text-red">
+                        {" "}
+                        — mangler {formatCurrency(r.economics.shortfall)} for at nå butikkens minimumskøb
+                      </span>
+                    )}
+                  </div>
+                )}
                 {r.result.recommendedQty > 0 && (
                   <OutlineButton onClick={() => addToList(r)}>Tilføj til indkøbsliste</OutlineButton>
                 )}

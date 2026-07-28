@@ -32,7 +32,12 @@ export default function NyttilbudPage() {
       const supabase = createSupabaseBrowserClient();
       const [{ data: p }, { data: s }] = await Promise.all([
         supabase.from("products").select("id, name, icon").eq("organization_id", membership.organizationId).order("name"),
-        supabase.from("stores").select("id, name").eq("organization_id", membership.organizationId).order("name")
+        supabase
+          .from("stores")
+          .select("id, name")
+          .eq("organization_id", membership.organizationId)
+          .eq("active", true)
+          .order("name")
       ]);
       setProducts(p ?? []);
       setStores(s ?? []);

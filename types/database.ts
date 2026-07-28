@@ -24,6 +24,7 @@ export type ListItemStatus =
 export type ReservationStatus = "aktiv" | "frigivet" | "gennemført" | "udløbet";
 export type MovementType = "køb" | "forbrug" | "manuel regulering" | "kassation" | "arrangement" | "korrektion";
 export type RoleCode = "indkober" | "administrator";
+export type StoreType = "supermarked" | "discount" | "engros" | "specialbutik" | "onlinebutik";
 
 export interface Database {
   public: {
@@ -115,7 +116,10 @@ export interface Database {
           id: string;
           organization_id: string;
           name: string;
-          type: string | null;
+          type: StoreType | null;
+          address: string | null;
+          postal_code: string | null;
+          city: string | null;
           distance_km: number | null;
           delivery: boolean;
           delivery_price: number;
@@ -127,7 +131,10 @@ export interface Database {
         Insert: {
           organization_id: string;
           name: string;
-          type?: string | null;
+          type?: StoreType | null;
+          address?: string | null;
+          postal_code?: string | null;
+          city?: string | null;
           distance_km?: number | null;
           delivery?: boolean;
           delivery_price?: number;
@@ -138,7 +145,10 @@ export interface Database {
         };
         Update: Partial<{
           name: string;
-          type: string | null;
+          type: StoreType | null;
+          address: string | null;
+          postal_code: string | null;
+          city: string | null;
           distance_km: number | null;
           delivery: boolean;
           delivery_price: number;
